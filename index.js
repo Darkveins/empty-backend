@@ -172,3 +172,5 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Empty App Backend running on port ${PORT}`);
 });
+// Export the app for Vercel
+module.exports = app;
