@@ -11,12 +11,9 @@ app.use(bodyParser.json());
 // Connect to Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// CONFIGURATION
-// Change this to your actual college domain for production (e.g., '@srm.edu.in')
-const COLLEGE_DOMAIN = '@gmail.com'; 
+// CONFIGURATION: Removed COLLEGE_DOMAIN variable as we accept all domains now.
 
-// --- HELPER: NOTIFICATION SYSTEM (Updated for Deep Links) ---
-// Now accepts 'type' (e.g., 'request') and 'targetId' (e.g., request_id)
+// --- HELPER: NOTIFICATION SYSTEM ---
 async function createNotification(userId, title, message, type = 'info', targetId = null) {
     try {
         await supabase.from('notifications').insert([{ 
@@ -24,14 +21,14 @@ async function createNotification(userId, title, message, type = 'info', targetI
             title, 
             message, 
             is_read: false,
-            type,       // Stores 'request', 'task', or 'info'
-            target_id: targetId // Stores the ID to jump to
+            type,
+            target_id: targetId 
         }]);
     } catch (err) { console.log("Notif Error:", err); }
 }
 
 // ==========================================
-// 1. AUTHENTICATION
+// 1. AUTHENTICATION (Global Multi-Campus)
 // ==========================================
 app.post('/login', async (req, res) => {
     const { phone, name, department, year, email } = req.body;
@@ -39,16 +36,18 @@ app.post('/login', async (req, res) => {
     let { data: user } = await supabase.from('users').select('*').eq('phone', phone).single();
 
     if (!user) {
+        // VITAL: Now only checks if email exists (Any domain is accepted)
         if (!email) return res.status(400).json({ error: "College Email is required." });
-        if (!email.toLowerCase().endsWith(COLLEGE_DOMAIN)) {
-            return res.status(400).json({ error: `Must use an official ${COLLEGE_DOMAIN} email.` });
-        }
+        
+        // Extract the domain for the Profile Badge (e.g., kpriet.ac.in)
+        const domainPart = email.split('@')[1]; 
 
         const { data: newUser, error } = await supabase
             .from('users')
             .insert([{ 
                 name, phone, department, year, email, 
-                status: 'available', is_verified: true, rating_avg: 5.0 
+                status: 'available', is_verified: true, rating_avg: 5.0,
+                college_domain: domainPart // Saves the unique campus identity
             }])
             .select().single();
             
@@ -63,11 +62,7 @@ app.post('/login', async (req, res) => {
 // ==========================================
 app.get('/notifications/:userId', async (req, res) => {
     const { userId } = req.params;
-    const { data, error } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
 });
@@ -83,11 +78,7 @@ app.put('/notifications/:id/read', async (req, res) => {
 // ==========================================
 app.get('/tasks', async (req, res) => {
     const { category } = req.query;
-    let query = supabase
-        .from('tasks')
-        .select('*, users!created_by(name, department, rating_avg, is_verified)')
-        .eq('status', 'open')
-        .order('created_at', { ascending: false });
+    let query = supabase.from('tasks').select('*, users!created_by(name, department, rating_avg, is_verified, college_domain)').eq('status', 'open').order('created_at', { ascending: false });
 
     if (category && category !== 'All') query = query.eq('category', category);
 
@@ -98,13 +89,10 @@ app.get('/tasks', async (req, res) => {
 
 app.post('/tasks', async (req, res) => {
     const { created_by, title, description, price, location, urgency, category } = req.body;
-    const { data, error } = await supabase
-        .from('tasks')
-        .insert([{ 
-            created_by, title, description, price, location, urgency, 
-            category: category || 'General', status: 'open' 
-        }])
-        .select();
+    const { data, error } = await supabase.from('tasks').insert([{ 
+        created_by, title, description, price, location, urgency, 
+        category: category || 'General', status: 'open' 
+    }]).select();
     if (error) return res.status(400).json({ error: error.message });
     res.json(data);
 });
@@ -112,7 +100,6 @@ app.post('/tasks', async (req, res) => {
 app.put('/tasks/:taskId/complete', async (req, res) => {
     const { taskId } = req.params;
     
-    // 1. Mark Complete
     const { data: task, error } = await supabase
         .from('tasks')
         .update({ status: 'completed' })
@@ -122,28 +109,19 @@ app.put('/tasks/:taskId/complete', async (req, res) => {
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // 2. Notify the Creator (Deep Linked to the Task)
-    await createNotification(
-        task.created_by, 
-        "Task Completed", 
-        `Task "${task.title}" is marked as done.`,
-        'task',
-        task.id
-    );
+    // Notify the Creator
+    await createNotification(task.created_by, "Task Completed", `Task "${task.title}" is marked as done.`, 'task', task.id);
     
     res.json({ message: 'Task Completed' });
 });
 
 // ==========================================
-// 4. HELPERS & DIRECT REQUESTS (Updated)
+// 4. HELPERS & DIRECT REQUESTS
 // ==========================================
 app.get('/search/helpers', async (req, res) => {
     const { skill, query } = req.query;
-    let dbQuery = supabase
-        .from('users')
-        .select('id, name, department, rating_avg, skills, status, tasks_completed')
-        .eq('status', 'available')
-        .order('rating_avg', { ascending: false });
+    
+    let dbQuery = supabase.from('users').select('id, name, department, rating_avg, skills, status, tasks_completed, college_domain').eq('status', 'available').order('rating_avg', { ascending: false });
 
     if (skill && skill !== 'All') dbQuery = dbQuery.contains('skills', [skill]);
     if (query) dbQuery = dbQuery.ilike('name', `%${query}%`);
@@ -153,47 +131,27 @@ app.get('/search/helpers', async (req, res) => {
 });
 
 app.get('/helpers', async (req, res) => {
-    const { data } = await supabase
-        .from('users')
-        .select('id, name, rating_avg, status')
-        .eq('status', 'available')
-        .order('rating_avg', { ascending: false })
-        .limit(10);
+    const { data } = await supabase.from('users').select('id, name, rating_avg, status').eq('status', 'available').order('rating_avg', { ascending: false }).limit(10);
     res.json(data || []);
 });
 
 app.post('/direct-requests', async (req, res) => {
     const { sender_id, receiver_id, message, price, location } = req.body;
     
-    // 1. Create Request
-    const { data, error } = await supabase
-        .from('direct_requests')
-        .insert([{ sender_id, receiver_id, message, price_offer: price, location_offer: location, status: 'pending' }])
-        .select()
-        .single(); // Important: Returns the single object with ID
+    const { data, error } = await supabase.from('direct_requests').insert([{ sender_id, receiver_id, message, price_offer: price, location_offer: location, status: 'pending' }]).select().single();
     
     if (error) return res.status(400).json({ error: error.message });
 
-    // 2. Notify Receiver with Deep Link Data
-    // We pass 'request' as type and data.id as target_id
-    await createNotification(
-        receiver_id, 
-        "New Job Request", 
-        `Offer: ₹${price} - ${message}`,
-        'request', 
-        data.id
-    );
+    // Notify Receiver with Deep Link Data
+    await createNotification(receiver_id, "New Job Request", `Offer: ₹${price} - ${message}`, 'request', data.id);
 
     res.json(data);
 });
 
 app.post('/direct-requests/:id/convert', async (req, res) => {
     const { id } = req.params;
-    
-    // 1. Get the request info
     const { data: reqData } = await supabase.from('direct_requests').select('*').eq('id', id).single();
     
-    // 2. Create the actual Task
     const { data: task } = await supabase
         .from('tasks')
         .insert([{
@@ -209,14 +167,12 @@ app.post('/direct-requests/:id/convert', async (req, res) => {
         }])
         .select().single();
 
-    // 3. Archive the request
     await supabase.from('direct_requests').update({ status: 'converted' }).eq('id', id);
-    
     res.json(task);
 });
 
 // ==========================================
-// 5. REVIEWS & CHAT
+// 5. REVIEWS, CHAT, STATUS
 // ==========================================
 app.post('/reviews', async (req, res) => {
     const { task_id, reviewer_id, reviewed_user_id, rating, comment } = req.body;
@@ -252,5 +208,5 @@ app.put('/users/status', async (req, res) => {
 module.exports = app;
 
 if (require.main === module) {
-    app.listen(3000, () => console.log('V4 Final Backend Running on Port 3000'));
+    app.listen(3000, () => console.log('V5 Backend Running on Port 3000'));
 }
