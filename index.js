@@ -8,10 +8,9 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-// Connect to Supabase
+
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// --- HELPER: NOTIFICATION SYSTEM ---
 async function createNotification(userId, title, message, type = 'info', targetId = null) {
     try {
         await supabase.from('notifications').insert([{ 
@@ -25,9 +24,7 @@ async function createNotification(userId, title, message, type = 'info', targetI
     } catch (err) { console.log("Notif Error:", err); }
 }
 
-// ==========================================
-// 1. AUTHENTICATION (Multi-Campus Ready)
-// ==========================================
+
 app.post('/login', async (req, res) => {
     const { phone, name, department, year, email } = req.body;
     
@@ -55,9 +52,7 @@ app.post('/login', async (req, res) => {
     res.json(user);
 });
 
-// ==========================================
-// 2. NOTIFICATIONS API
-// ==========================================
+
 app.get('/notifications/:userId', async (req, res) => {
     const { userId } = req.params;
     const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
@@ -71,9 +66,7 @@ app.put('/notifications/:id/read', async (req, res) => {
     res.json({ success: true });
 });
 
-// ==========================================
-// 3. TASK MARKETPLACE
-// ==========================================
+
 app.get('/tasks', async (req, res) => {
     const { category } = req.query;
     let query = supabase.from('tasks').select('*, users!created_by(name, department, rating_avg, is_verified, college_domain)').eq('status', 'open').order('created_at', { ascending: false });
@@ -108,9 +101,7 @@ app.put('/tasks/:taskId/complete', async (req, res) => {
     res.json({ message: 'Task Completed' });
 });
 
-// ==========================================
-// 4. HELPERS & DIRECT REQUESTS
-// ==========================================
+
 app.get('/search/helpers', async (req, res) => {
     const { skill, query } = req.query;
     
@@ -135,7 +126,6 @@ app.post('/direct-requests', async (req, res) => {
     
     if (error) return res.status(400).json({ error: error.message });
 
-    // Notify Receiver with Deep Link Data
     await createNotification(receiver_id, "New Job Request", `Offer: ₹${price} - ${message}`, 'request', data.id);
 
     res.json(data);
@@ -164,9 +154,7 @@ app.post('/direct-requests/:id/convert', async (req, res) => {
     res.json(task);
 });
 
-// ==========================================
-// 5. REVIEWS, CHAT, STATUS
-// ==========================================
+
 app.post('/reviews', async (req, res) => {
     const { task_id, reviewer_id, reviewed_user_id, rating, comment } = req.body;
     await supabase.from('reviews').insert([{ task_id, reviewer_id, reviewed_user_id, rating, comment }]);
@@ -197,7 +185,7 @@ app.put('/users/status', async (req, res) => {
     res.json({ message: 'Status Updated' });
 });
 
-// Export for Vercel
+
 module.exports = app;
 
 if (require.main === module) {
