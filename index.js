@@ -24,7 +24,6 @@ async function createNotification(userId, title, message, type = 'info', targetI
     } catch (err) { console.log("Notif Error:", err); }
 }
 
-
 app.post('/login', async (req, res) => {
     const { phone, name, department, year, email } = req.body;
     
@@ -52,7 +51,6 @@ app.post('/login', async (req, res) => {
     res.json(user);
 });
 
-
 app.get('/notifications/:userId', async (req, res) => {
     const { userId } = req.params;
     const { data, error } = await supabase.from('notifications').select('*').eq('user_id', userId).order('created_at', { ascending: false });
@@ -65,7 +63,6 @@ app.put('/notifications/:id/read', async (req, res) => {
     await supabase.from('notifications').update({ is_read: true }).eq('id', id);
     res.json({ success: true });
 });
-
 
 app.get('/tasks', async (req, res) => {
     const { category } = req.query;
@@ -100,7 +97,6 @@ app.put('/tasks/:taskId/complete', async (req, res) => {
     
     res.json({ message: 'Task Completed' });
 });
-
 
 app.get('/search/helpers', async (req, res) => {
     const { skill, query } = req.query;
@@ -153,7 +149,6 @@ app.post('/direct-requests/:id/convert', async (req, res) => {
     await supabase.from('direct_requests').update({ status: 'converted' }).eq('id', id);
     res.json(task);
 });
-
 
 app.post('/reviews', async (req, res) => {
     const { task_id, reviewer_id, reviewed_user_id, rating, comment } = req.body;
