@@ -11,8 +11,6 @@ app.use(bodyParser.json());
 // Connect to Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// CONFIGURATION: Removed COLLEGE_DOMAIN variable as we accept all domains now.
-
 // --- HELPER: NOTIFICATION SYSTEM ---
 async function createNotification(userId, title, message, type = 'info', targetId = null) {
     try {
@@ -28,7 +26,7 @@ async function createNotification(userId, title, message, type = 'info', targetI
 }
 
 // ==========================================
-// 1. AUTHENTICATION (Global Multi-Campus)
+// 1. AUTHENTICATION (Multi-Campus Ready)
 // ==========================================
 app.post('/login', async (req, res) => {
     const { phone, name, department, year, email } = req.body;
@@ -36,10 +34,10 @@ app.post('/login', async (req, res) => {
     let { data: user } = await supabase.from('users').select('*').eq('phone', phone).single();
 
     if (!user) {
-        // VITAL: Now only checks if email exists (Any domain is accepted)
+        // VITAL: Accept any email domain for global deployment
         if (!email) return res.status(400).json({ error: "College Email is required." });
         
-        // Extract the domain for the Profile Badge (e.g., kpriet.ac.in)
+        // Extract the domain for the Profile Badge
         const domainPart = email.split('@')[1]; 
 
         const { data: newUser, error } = await supabase
@@ -100,12 +98,7 @@ app.post('/tasks', async (req, res) => {
 app.put('/tasks/:taskId/complete', async (req, res) => {
     const { taskId } = req.params;
     
-    const { data: task, error } = await supabase
-        .from('tasks')
-        .update({ status: 'completed' })
-        .eq('id', taskId)
-        .select()
-        .single();
+    const { data: task, error } = await supabase.from('tasks').update({ status: 'completed' }).eq('id', taskId).select().single();
 
     if (error) return res.status(400).json({ error: error.message });
 
@@ -208,5 +201,5 @@ app.put('/users/status', async (req, res) => {
 module.exports = app;
 
 if (require.main === module) {
-    app.listen(3000, () => console.log('V5 Backend Running on Port 3000'));
+    app.listen(3000, () => console.log('V5 Final Backend Running on Port 3000'));
 }
